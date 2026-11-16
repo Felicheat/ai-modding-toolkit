@@ -73,7 +73,7 @@ def scan(only=None, quiet=False):
     for path in _iter_files(SRC, only):
         rel = os.path.relpath(path, SRC).replace('\\', '/')
         ext = os.path.splitext(path)[1].lower()
-        if ext not in TEXT_EXT and os.path.basename(path) not in ('VERSION', 'LICENSE', '.gitignore'):
+        if ext not in TEXT_EXT and os.path.basename(path) not in ('VERSION', 'LICENSE', '.gitignore', '.gitattributes'):
             print('FAIL %s: file type %s is not allowed in the pack' % (rel, ext or '(none)'))
             fails += 1
             continue
