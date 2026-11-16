@@ -1,0 +1,67 @@
+{
+  "_about": "Rules for check_release_text.py. Edit freely. level FAIL blocks a release, WARN asks a person to read the line. pattern and allow are Python regexes (JSON-escaped: write \\b for a word boundary). allow excuses a whole line for that rule. group core always runs; other groups only with --group <name>. Dashes are written as \\u escapes so this file stays plain ASCII.",
+  "extensions": [
+    ".txt",
+    ".md",
+    ".bbcode",
+    ".html",
+    ".htm",
+    ".xml",
+    ".ini",
+    ".csv"
+  ],
+  "rules": [
+    {
+      "id": "em-dash",
+      "level": "FAIL",
+      "pattern": "\u2014",
+      "message": "em dash, use a colon, comma or parentheses"
+    },
+    {
+      "id": "en-dash",
+      "level": "FAIL",
+      "pattern": "\u2013",
+      "message": "en dash, use a plain hyphen for ranges, otherwise a colon, comma or parentheses"
+    },
+    {
+      "id": "other-dash",
+      "level": "FAIL",
+      "pattern": "[\u2012\u2015\u2e3a\u2e3b\ufe58\ufe63\uff0d]",
+      "message": "dash character, use a colon, comma or parentheses"
+    },
+    {
+      "id": "hyphen-as-dash",
+      "level": "WARN",
+      "pattern": "\\w\\s-{1,2}\\s\\w",
+      "allow": "^\\s*[-*]\\s",
+      "message": "a hyphen used as a dash between words, use a colon, comma or parentheses"
+    },
+    {
+      "id": "chat-leftover",
+      "level": "FAIL",
+      "ignore_case": true,
+      "pattern": "\\b(as an ai|as a language model|i hope this helps|let me know if you('d| would)? like|here is (the|a|your) (updated|revised|rewritten|improved)|certainly!|great question)",
+      "message": "assistant chat text left in a public file"
+    },
+    {
+      "id": "ai-filler",
+      "level": "WARN",
+      "ignore_case": true,
+      "pattern": "\\b(delve[sd]?|delving|tapestry|seamless(ly)?|elevates?|elevated|elevating|unleash(es|ed)?|game[- ]chang(er|ing)|cutting[- ]edge|embark(s|ed)?|dive into|deep dive|it'?s worth noting|it is worth noting|in conclusion|look no further|testament to|ever[- ]evolving|revolutioni[sz]e[sd]?|next level|whether you'?re|immersive experience|rest assured|meticulous(ly)?|meticulously crafted|leverag(e|es|ed|ing)|plethora|myriad|realm of|symphony of|navigate the|in today'?s|breathes? new life|nestled|bustling|captivating|unparalleled|transformative|elevate your|enhance your)\\b",
+      "message": "filler or AI-sounding wording, say the concrete thing instead"
+    },
+    {
+      "id": "overclaim",
+      "level": "WARN",
+      "ignore_case": true,
+      "pattern": "\\b(fixes all|never crash(es)?|100% (compatible|stable|safe)|compatible with (everything|all mods)|works with every|zero (bugs|crashes)|bug[- ]free)\\b",
+      "message": "claims more than a test can prove"
+    },
+    {
+      "id": "double-exclamation",
+      "level": "WARN",
+      "pattern": "!!",
+      "message": "double exclamation mark"
+    }
+  ]
+}

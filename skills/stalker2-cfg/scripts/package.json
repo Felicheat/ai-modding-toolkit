@@ -1,0 +1,14 @@
+{
+  "name": "stalker2-cfg-tools",
+  "version": "1.0.0",
+  "private": true,
+  "description": "STALKER 2 cfg tools: decode .cfg.bin (container v1 and v2), verify text cfg syntax, diff tables between builds",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "s2cfgtojson": "9.2.1"
+  }
+}
