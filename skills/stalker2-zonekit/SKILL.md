@@ -74,17 +74,17 @@ metadata:
 
 ## Smart App Control
 Windows Smart App Control blocks kit binaries intermittently: UnrealPak exits 0xC0E90002 with no log, UAT fails within seconds,
-a ShaderCompileWorker crash closes the editor, or the launcher stub fails. Details and fallbacks: references/cooking.md; switching it off is the user's call, so offer fallbacks first.
+a ShaderCompileWorker crash closes the editor, or the launcher stub is refused. Proof and fallbacks: references/cooking.md. Switching it off is the user's call (it removes a Windows protection): offer the fallbacks first.
 
 ## References
-- references/reading-source.md: before reading uncooked assets, uasset-dump, texture settings or material wiring.
-- references/editor-gui.md: before kit steps, paste blocks, launching the editor, save checks, or Sequencer.
-- references/headless-python.md: before headless Python, or creating a mod or copying GSC assets without the GUI.
-- references/live-bridge.md: before starting or calling the opt-in localhost HTTP bridge in the open GUI.
-- references/materials.md: before patching constants, Custom node code, instance values, or static switches.
-- references/cooking.md: before cooking, packing or splitting a mod, or when cook/pack/kit binaries fail.
-- references/cook-performance.md: before speeding up `GSCCookMod` or repacking without cooking.
+- references/reading-source.md: before reading uncooked assets, uasset-dump output, texture settings or a material's wiring.
+- references/editor-gui.md: before writing kit steps or a paste block, launching the editor, verifying a save, or Sequencer work.
+- references/headless-python.md: before a headless Python run, or making a mod or copying in a GSC asset without the GUI.
+- references/live-bridge.md: before starting or calling the opt-in localhost HTTP bridge inside an open GUI session.
+- references/materials.md: before patching a constant, Custom node code or an instance value, or touching static switches.
+- references/cooking.md: before cooking, packing or splitting a kit mod, and when a cook, pack or kit binary fails.
+- references/cook-performance.md: before speeding up the kit's own `GSCCookMod`, or repacking without a cook.
 - references/niagara.md: before reading or editing a Niagara system.
 - references/paste-text.md: before generating socket, AnimCollection or other Details-panel paste text.
-- references/harness-notes.md: before kit game-system research or adding NEW (non-override) content.
-- references/meshes.md: before reimporting a mesh with a missing source path.
+- references/harness-notes.md: before researching a game system in the kit, or adding NEW (non-override) content.
+- references/meshes.md: before reimporting a mesh whose source path is gone.

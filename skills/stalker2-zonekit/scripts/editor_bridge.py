@@ -1,21 +1,25 @@
 """Opt-in localhost HTTP listener for the open STALKER 2 Zone Kit editor (127.0.0.1 only).
 
-Starts only when explicitly launched by the user inside Stalker2ModEditor (Output Log or the
-user's own Content/Python/init_unreal.py), and auto-skips inside commandlet/unattended runs
-(-run=Cook, -run=pythonscript, -unattended, -nullrhi). Disabled when the editor is closed.
+Starts only when manually launched by the user inside an active Stalker2ModEditor Output Log
+session and should be stopped with stop_bridge() when finished. Auto-skips inside
+commandlet/unattended runs (-run=Cook, -run=pythonscript, -unattended, -nullrhi). Disabled
+when the editor is closed.
 
 Security controls & limits:
   - Binds loopback 127.0.0.1:18777 only (overridable with S2_BRIDGE_PORT).
-  - Requires per-boot random bearer token (header X-S2-Bridge-Token) written only after the
-    port binds cleanly, locked on Windows via icacls to the current user account.
+  - Fail-closed per-boot random bearer token (header X-S2-Bridge-Token), locked on Windows
+    via icacls to the current user account; HTTP POST rejects with 403 if the token is empty
+    or stale (e.g. after a module reload).
   - Single-mod write lock: set_mi_params refuses all writes unless start_bridge(mod="<Mod>")
     or S2_BRIDGE_MOD names the allowed mod root (other mods and /Game/ are refused).
-  - Non-queueing single-slot Slate main-thread dispatch (HTTP 429 when busy, 504 on timeout).
+  - Pre-queue payload & finite-timeout validation (HTTP 400 before queueing) and non-queueing
+    single-slot Slate dispatch (HTTP 429 when busy, HTTP 504 on timeout; already-started tasks
+    keep running on the main thread until finished).
   - Best-effort per-task load/save speed bump (_BudgetGuard on EditorAssetLibrary/Utils,
     max_loads <= 50, max_saves <= 10); bypassable by C++/load_object, NOT a security sandbox.
-  - Arbitrary script execution (run_script) stays disabled unless started with
-    allow_run_script=True or S2_BRIDGE_ALLOW_RUN_SCRIPT=1. When enabled, any token holder
-    runs arbitrary local Python in the editor process with script dir prepended to sys.path.
+  - Arbitrary script execution (run_script) stays disabled unless started explicitly with both
+    allow_run_script=True and script_root="<local dir>" (no env-var toggle; UNC/network paths
+    and scripts outside script_root are refused). Script dir is prepended to sys.path.
 
 Example inside the Zone Kit Output Log (Python):
     import sys; sys.path.append(r"<skill scripts folder>")
@@ -24,8 +28,10 @@ Example inside the Zone Kit Output Log (Python):
     editor_bridge.start_bridge(mod="MyMod")       # allow set_mi_params under /MyMod/
 """
 import contextlib
+import ctypes
 import io
 import json
+import math
 import os
 import queue
 import re
@@ -60,6 +66,28 @@ _server_thread = None
 _slate_handle = None
 _allow_run_script = False
 _allowed_mod = ''
+_allowed_script_root = ''
+
+
+def _is_network_path(path):
+    raw = str(path or '').strip()
+    if not raw:
+        return False
+    if raw.startswith('\\\\') or raw.startswith('//'):
+        return True
+    resolved = os.path.realpath(raw)
+    if resolved.startswith('\\\\') or resolved.startswith('//'):
+        return True
+    if os.name == 'nt':
+        cleaned = resolved[4:] if resolved.startswith('\\\\?\\') else resolved
+        drive, _ = os.path.splitdrive(cleaned)
+        if drive:
+            try:
+                if ctypes.windll.kernel32.GetDriveTypeW(drive + '\\') == 4:  # DRIVE_REMOTE
+                    return True
+            except Exception:
+                pass
+    return False
 
 
 def _ue():
@@ -338,17 +366,27 @@ def _action_set_mi_params(payload):
 
 
 def _action_run_script(payload):
-    """Execute an arbitrary local .py file inside the live editor process (bearer token holders only).
+    """Execute a local .py file inside script_root within the live editor (bearer token holders only).
 
     Prepends the script directory to sys.path while running so local helper imports resolve first.
     """
-    enabled = _allow_run_script or os.environ.get('S2_BRIDGE_ALLOW_RUN_SCRIPT') == '1'
-    if not enabled:
+    if not (_allow_run_script and _allowed_script_root):
         return {
             'status': 'error',
-            'error': 'run_script is disabled by default; start bridge with allow_run_script=True or set S2_BRIDGE_ALLOW_RUN_SCRIPT=1.',
+            'error': 'run_script is disabled; start bridge with allow_run_script=True and script_root="<local dir>".',
         }
-    script = os.path.abspath(str(payload.get('script') or ''))
+    raw_script = str(payload.get('script') or '').strip()
+    if not raw_script:
+        return {'status': 'error', 'error': 'script path is required'}
+    if _is_network_path(raw_script):
+        return {'status': 'error', 'error': 'refusing network/UNC script path: %s' % raw_script}
+    script = os.path.realpath(raw_script)
+    try:
+        in_root = os.path.commonpath([os.path.normcase(_allowed_script_root), os.path.normcase(script)]) == os.path.normcase(_allowed_script_root)
+    except ValueError:
+        in_root = False
+    if not in_root:
+        return {'status': 'error', 'error': 'script %s is outside allowed script_root %s' % (script, _allowed_script_root)}
     if not os.path.isfile(script) or not script.lower().endswith('.py'):
         return {'status': 'error', 'error': 'script must be an existing .py file: %s' % script}
     script_args = [str(a) for a in (payload.get('args') or [])]
@@ -416,7 +454,7 @@ def _execute_on_main_thread(payload):
         return {'status': 'error', 'error': str(e), 'traceback': traceback.format_exc()}
 
 
-def _make_handler(port_bound):
+def _make_handler(port_bound, expected_token):
     class BridgeHandler(BaseHTTPRequestHandler):
         def log_message(self, _fmt, *_args):
             pass
@@ -436,9 +474,11 @@ def _make_handler(port_bound):
                 self._send_json(200, {
                     'status': 'online',
                     'busy': busy,
-                    'auth_required': bool(_bridge_token),
+                    'auth_required': True,
+                    'token_active': bool(expected_token and _bridge_token),
                     'allowed_mod': _allowed_mod or None,
-                    'run_script_enabled': bool(_allow_run_script or os.environ.get('S2_BRIDGE_ALLOW_RUN_SCRIPT') == '1'),
+                    'run_script_enabled': bool(_allow_run_script and _allowed_script_root),
+                    'script_root': _allowed_script_root or None,
                     'port': port_bound,
                 })
             else:
@@ -447,8 +487,8 @@ def _make_handler(port_bound):
         def do_POST(self):
             global _task_in_flight
             req_token = self.headers.get('X-S2-Bridge-Token', '')
-            if _bridge_token and not secrets.compare_digest(req_token, _bridge_token):
-                self._send_json(403, {'status': 'forbidden', 'error': 'Invalid or missing X-S2-Bridge-Token header'})
+            if not expected_token or not _bridge_token or not secrets.compare_digest(req_token, expected_token):
+                self._send_json(403, {'status': 'forbidden', 'error': 'Invalid, missing, or inactive X-S2-Bridge-Token'})
                 return
             try:
                 length = int(self.headers.get('Content-Length', '0'))
@@ -460,6 +500,22 @@ def _make_handler(port_bound):
             except Exception as e:
                 self._send_json(400, {'error': 'Invalid JSON: %s' % e})
                 return
+            if not isinstance(payload, dict):
+                self._send_json(400, {'error': 'Request JSON must be an object'})
+                return
+            raw_timeout = payload.get('timeout', 30.0)
+            if isinstance(raw_timeout, bool):
+                self._send_json(400, {'error': 'Invalid timeout: boolean is not allowed'})
+                return
+            try:
+                timeout_val = float(raw_timeout)
+            except (TypeError, ValueError):
+                self._send_json(400, {'error': 'Invalid timeout value: %r' % (raw_timeout,)})
+                return
+            if not math.isfinite(timeout_val):
+                self._send_json(400, {'error': 'Invalid timeout value: must be finite'})
+                return
+            timeout_s = min(max(1.0, timeout_val), 120.0)
 
             with _state_lock:
                 if _task_in_flight:
@@ -477,13 +533,15 @@ def _make_handler(port_bound):
                 self._send_json(429, {'status': 'busy', 'error': 'Bridge task slot is full'})
                 return
 
-            timeout_s = min(max(1.0, float(payload.get('timeout', 30.0))), 120.0)
             try:
                 res = res_q.get(timeout=timeout_s)
                 self._send_json(200, res)
             except queue.Empty:
                 cancel_ev.set()
-                self._send_json(504, {'status': 'timeout', 'error': 'Timed out waiting for Slate main-thread tick'})
+                self._send_json(504, {
+                    'status': 'timeout',
+                    'error': 'Timed out waiting for Slate main-thread result; queued unstarted tasks are skipped, while an already-started task keeps running until finished',
+                })
 
     return BridgeHandler
 
@@ -507,9 +565,9 @@ def _on_slate_tick(_delta_time):
             _task_in_flight = False
 
 
-def start_bridge(host=DEFAULT_HOST, port=None, force=False, allow_run_script=False, token_file=None, mod=None):
-    """Start the opt-in localhost HTTP listener inside the interactive Zone Kit editor."""
-    global _bridge_token, _token_file_in_use, _httpd, _server_thread, _slate_handle, _allow_run_script, _allowed_mod
+def start_bridge(host=DEFAULT_HOST, port=None, force=False, allow_run_script=False, token_file=None, mod=None, script_root=None):
+    """Start the opt-in localhost HTTP listener inside an active interactive Zone Kit editor session."""
+    global _bridge_token, _token_file_in_use, _httpd, _server_thread, _slate_handle, _allow_run_script, _allowed_mod, _allowed_script_root
     ue = _ue()
     if not force and is_commandlet_or_unattended():
         _log('[s2_bridge] Skipping bridge startup in commandlet/unattended process.')
@@ -519,20 +577,32 @@ def start_bridge(host=DEFAULT_HOST, port=None, force=False, allow_run_script=Fal
     resolved_mod = str(mod if mod is not None else os.environ.get('S2_BRIDGE_MOD', '')).strip()
     if resolved_mod and not MOD_NAME_RX.match(resolved_mod):
         raise ValueError('mod must match ^[A-Za-z0-9_]+$: %r' % resolved_mod)
+    resolved_script_root = ''
+    if allow_run_script:
+        if not script_root or not str(script_root).strip():
+            raise ValueError('allow_run_script=True requires script_root pointing to a local directory')
+        raw_root = str(script_root).strip()
+        if _is_network_path(raw_root):
+            raise ValueError('Refusing network/UNC script_root: %r' % script_root)
+        resolved_script_root = os.path.realpath(raw_root)
+        if not os.path.isdir(resolved_script_root):
+            raise ValueError('script_root does not exist or is not a directory: %r' % script_root)
     if _server_thread is not None and _server_thread.is_alive():
         _log('[s2_bridge] Already running on %s (use restart_bridge(...) to change options)' % _httpd.server_address[1])
         return True
 
     bind_port = int(port if port is not None else os.environ.get('S2_BRIDGE_PORT', DEFAULT_PORT))
+    token = secrets.token_hex(24)
     try:
-        _httpd = ThreadingHTTPServer((host, bind_port), _make_handler(bind_port))
+        _httpd = ThreadingHTTPServer((host, bind_port), _make_handler(bind_port, token))
     except OSError as e:
         _log('[s2_bridge] Could not bind %s:%d: %s' % (host, bind_port, e), level='warn')
         return False
 
     _allowed_mod = resolved_mod
     _allow_run_script = bool(allow_run_script)
-    _bridge_token = secrets.token_hex(24)
+    _allowed_script_root = resolved_script_root
+    _bridge_token = token
     _token_file_in_use = os.path.abspath(token_file) if token_file else default_token_file()
     try:
         os.makedirs(os.path.dirname(_token_file_in_use), exist_ok=True)
@@ -545,15 +615,14 @@ def start_bridge(host=DEFAULT_HOST, port=None, force=False, allow_run_script=Fal
     _server_thread = threading.Thread(target=_httpd.serve_forever, name='S2_Editor_Bridge', daemon=True)
     _server_thread.start()
     _slate_handle = ue.register_slate_post_tick_callback(_on_slate_tick)
-    _log('[s2_bridge] Listening on http://%s:%d (token auth enabled, allowed_mod=%s, run_script=%s)'
-         % (host, bind_port, _allowed_mod or 'none',
-            _allow_run_script or os.environ.get('S2_BRIDGE_ALLOW_RUN_SCRIPT') == '1'))
+    _log('[s2_bridge] Listening on http://%s:%d (token auth enabled, allowed_mod=%s, run_script=%s, script_root=%s)'
+         % (host, bind_port, _allowed_mod or 'none', _allow_run_script, _allowed_script_root or 'none'))
     return True
 
 
 def stop_bridge():
     """Stop the localhost HTTP listener, unregister Slate tick callback, and remove the token file."""
-    global _httpd, _server_thread, _slate_handle, _bridge_token, _token_file_in_use, _allow_run_script, _allowed_mod
+    global _httpd, _server_thread, _slate_handle, _bridge_token, _token_file_in_use, _allow_run_script, _allowed_mod, _allowed_script_root
     ue = unreal if unreal is not None else sys.modules.get('unreal')
     if _slate_handle is not None and ue is not None:
         try:
@@ -572,6 +641,7 @@ def stop_bridge():
     _bridge_token = ''
     _allow_run_script = False
     _allowed_mod = ''
+    _allowed_script_root = ''
     if _token_file_in_use and os.path.isfile(_token_file_in_use):
         try:
             os.remove(_token_file_in_use)
