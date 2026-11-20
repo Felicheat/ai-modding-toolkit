@@ -4,6 +4,12 @@
 - stalker2-zonekit: `scripts/niagara_constants.py` reads a Niagara system's module constants straight from the uncooked
   `.uasset`, with the kit closed. references/niagara.md now separates that route from the clipboard route (links, dynamic
   inputs, expression text).
+- stalker2-zonekit: added pure-stdlib `scripts/uasset_scan.py` (binary `.uasset` header/class/foreign-root & `.cfg*` folder scan),
+  `scripts/uasset_summary.py` (staged `uasset-dump` digest for Material Instances, Curves and Materials), `scripts/sdk_validate_mod.py`
+  (pre-cook `.uplugin`, `Content/` hygiene and cross-mod reference validator), and the opt-in loopback `scripts/editor_bridge.py`
+  + `sdk_run.py --bridge*` workflow (`references/live-bridge.md`).
+- stalker2-curves: `scripts/decode_curves.py` adds `--check` (flags cubic keys with non-zero tangents) and `--diff <vanilla> <mod>`.
+- stalker2-mod-setup: added `scripts/mod_guardrail.py` and `init_mod_repo.py --with-hook` for opt-in secret/path/`Content/` pre-commit checks.
 
 ## 1.0.0 (2026-11-15)
 First public release, under the MIT license. 20 skills for STALKER 2 modding, an interactive installer, and an install
