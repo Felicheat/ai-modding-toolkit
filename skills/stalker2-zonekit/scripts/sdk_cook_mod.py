@@ -174,6 +174,42 @@ def install_dir(folder):
     return target
 
 
+def pack_cfg(mod, base, priority, out_dir):
+    """Pack any .cfg or .cfg_patch* files under Content/ into a companion _Cfg[_<N>]_P.pak via repak."""
+    content = os.path.join(kit_paths()['kit'], 'Stalker2', 'Mods', mod, 'Content')
+    if not os.path.isdir(content):
+        return None
+    cfgs = []
+    for root, _, files in os.walk(content):
+        for f in sorted(files):
+            ext = os.path.splitext(f)[1].lower()
+            if ext == '.cfg' or ext.startswith('.cfg_patch'):
+                cfgs.append(os.path.join(root, f))
+    if not cfgs:
+        return None
+    repak = s2paths.tool('repak')
+    pak_name = '%s_Cfg_%s_P.pak' % (base, priority) if priority else '%s_Cfg_P.pak' % base
+    out_pak = os.path.join(out_dir, pak_name)
+    work = os.path.join(s2paths.work_dir(), 'cfg_' + mod)
+    shutil.rmtree(work, ignore_errors=True)
+    try:
+        for src in cfgs:
+            rel = os.path.relpath(src, content)
+            dst = os.path.join(work, 'Stalker2', 'Content', rel)
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copyfile(src, dst)
+        os.makedirs(out_dir, exist_ok=True)
+        if os.path.exists(out_pak):
+            os.remove(out_pak)
+        r = subprocess.run([repak, 'pack', '--version', 'V11', work, out_pak], capture_output=True, text=True)
+        if r.returncode or not os.path.isfile(out_pak):
+            raise SystemExit('repak pack failed for cfg companion pak: ' + (r.stdout + r.stderr).strip())
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    print('  out: %s (%d bytes, %d cfg file(s))' % (out_pak, os.path.getsize(out_pak), len(cfgs)))
+    return out_pak
+
+
 def arg(args, flag, default=None):
     if flag not in args:
         return default
@@ -204,6 +240,7 @@ def main():
         if not out_dir:
             raise SystemExit('--pack-only needs --out <dir>')
         pack(mod, name, out_dir)
+        pack_cfg(mod, base, priority, out_dir)
         return 0
     folder = arg(args, '--install')
     out_dir = install_dir(folder) if folder else os.path.join(s2paths.work_dir(), 'out_' + mod)
@@ -211,6 +248,7 @@ def main():
         clean_cooked(mod)
     cook(mod)
     pack(mod, name, out_dir)
+    pack_cfg(mod, base, priority, out_dir)
     return 0
 
 

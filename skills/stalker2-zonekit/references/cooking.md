@@ -47,7 +47,9 @@ The shipped `PakPlainMod.bat <mod>` calls `RunUAT.bat GSCCookModOverrideContent 
 ## The fallback: the cook commandlet, retoc, zen_add_redirect
 `python scripts/sdk_cook_mod.py <mod> [--install <folder under ~mods>] [--name <base>] [--priority <N>]` cooks and packs;
 `--pack-only --out <dir>` packs the existing cook again (for example into a release folder). `--name` defaults to the mod name;
-`--priority` adds the `_<N>_P` tail only when given. Mod names must match `^[A-Za-z0-9_]+$`. Judge the run by its result (exit
+`--priority` adds the `_<N>_P` tail only when given. If `<mod>/Content` also contains `.cfg` or `.cfg_patch*` files, the script
+packs them alongside the trio into a companion `<base>_Cfg[_<N>]_P.pak` via `repak pack --version V11`, because IoStore asset
+packing skips non-UE config files. Mod names must match `^[A-Za-z0-9_]+$`. Judge the run by its result (exit
 code, the files, the game), never by a grep of its output. The script stops before packing when the cook log holds `Failed to
 compile Material` / `Default Material will be used`, or a Niagara script error (a `LogNiagara` line with `Error`, `Unknown
 Function Call`, or a Niagara `failed to compile`).
