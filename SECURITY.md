@@ -18,13 +18,9 @@ Check the files you received against `SHA256SUMS.txt` (PowerShell: `Get-FileHash
 Check installed skills any time: `python install.py --verify --agent <ids>`.
 
 ## What the skills' scripts do
-Scripts run only when you, or your agent with your permission, start them. None of them reach the internet. Two talk only
-to local tools on your own PC over loopback (`127.0.0.1`):
-- `waapi.py` (stalker2-audio) sends commands to the Wwise authoring tool you have open, through its local port (`8090`).
-- `editor_bridge.py` / `sdk_run.py --bridge*` (stalker2-zonekit) is opt-in only: nothing binds unless you explicitly call
-  `editor_bridge.start_bridge()` inside an interactive Zone Kit editor session (commandlets and cooks auto-skip). It listens
-  only on `127.0.0.1:18777`, writes a per-boot bearer token with owner-only NTFS ACL (`%LOCALAPPDATA%/Stalker2/Saved/s2_editor_bridge.token`),
-  caps loads/saves per task, and keeps `run_script` disabled unless started with `allow_run_script=True` or `S2_BRIDGE_ALLOW_RUN_SCRIPT=1`.
+Scripts run only when you, or your agent with your permission, start them. None of them reach the internet. One talks
+to a program on your own PC: `waapi.py` (stalker2-audio) sends commands to the Wwise authoring tool you have open,
+through its local port.
 - They find the game, the Zone Kit and ~mods with `s2paths.py`, which reads the Steam and Epic launcher files and
   the registry (read-only) and writes only its own config file in `%APPDATA%/stalker2-skill-pack/`.
 - They call external tools you installed yourself: retoc, repak, the Zone Kit editor and cook commandlet, Node,

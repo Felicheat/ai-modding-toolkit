@@ -22,10 +22,9 @@ metadata:
 ## Read the source before tuning
 - GSC's UNCOOKED assets (full graphs, Niagara systems, source textures, real settings) are in
   `<kit>/Stalker2/Content/Paks/FullEditor-WindowsModEditor.pak`. Settings such as SRGB come from there, never from a cooked file.
-- A material's real wiring: the user copies the graph as text, you read it with `python scripts/mat_t3d.py <file> summary`;
-  that is ground truth. `python scripts/mat_uasset_tree.py <full .uasset path>` gives a first look from the saved bytes.
-  Do this BEFORE trial-and-error tuning.
-- `tools/uasset-dump/` dumps any .uasset to JSON (build once: `dotnet build -c Release`; UAssetAPI by atenfyr). Use `scripts/uasset_summary.py` for compact digests (staged safely) and `scripts/uasset_scan.py` for fast binary header/folder triage.
+- Material wiring ground truth: copy graph text, run `python scripts/mat_t3d.py <file> summary`. From bytes:
+  `scripts/mat_uasset_tree.py`, `scripts/uasset_scan.py` (headers/refs), or `scripts/uasset_summary.py` (via
+  `tools/uasset-dump/`, UAssetAPI by atenfyr; `dotnet build -c Release`) before tuning.
 
 ## GUI essentials
 - One launch per sitting: loading takes minutes and the open kit edits every mod (switch mods in the main toolbar). Never
@@ -57,9 +56,8 @@ metadata:
   parent-only change never reaches it (cook the children too).
 
 ## Cooking
-- Run `python scripts/sdk_validate_mod.py <mod>` first to verify `.uplugin`, `Content/` extensions and cross-mod refs.
-- The kit's own tools first (they write the redirect). Fallback: `python scripts/sdk_cook_mod.py <mod>` (the cook commandlet
-  run directly, `retoc to-zen --version UE5_5`, then the redirect).
+- Validate first (`scripts/sdk_validate_mod.py <mod>`). Cook via kit tools first (writes redirect); fallback:
+  `python scripts/sdk_cook_mod.py <mod>` (cook commandlet, `retoc to-zen --version UE5_5`, then redirect).
 - `PakPlainMod.bat` as shipped skips the cook (an EMPTY pak on a new mod) and writes a legacy pak that cannot override.
 - Never cook while the kit is open (it locks the cook's cache files); never launch the kit during a cook.
 - A second kit mod referenced by the first does not cook (the reference becomes NONE): keep linked assets in one mod.
@@ -81,7 +79,6 @@ a ShaderCompileWorker crash closes the editor, or the launcher stub is refused. 
 - references/reading-source.md: before reading uncooked assets, uasset-dump output, texture settings or a material's wiring.
 - references/editor-gui.md: before writing kit steps or a paste block, launching the editor, verifying a save, or Sequencer work.
 - references/headless-python.md: before a headless Python run, or making a mod or copying in a GSC asset without the GUI.
-- references/live-bridge.md: opt-in localhost editor bridge (editor_bridge.py + sdk_run.py --bridge) for fast live runs in an open kit.
 - references/materials.md: before patching a constant, Custom node code or an instance value, or touching static switches.
 - references/cooking.md: before cooking, packing or splitting a kit mod, and when a cook, pack or kit binary fails.
 - references/cook-performance.md: before speeding up the kit's own `GSCCookMod`, or repacking without a cook.

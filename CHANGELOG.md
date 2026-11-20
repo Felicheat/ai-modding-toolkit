@@ -5,9 +5,8 @@
   `.uasset`, with the kit closed. references/niagara.md now separates that route from the clipboard route (links, dynamic
   inputs, expression text).
 - stalker2-zonekit: added pure-stdlib `scripts/uasset_scan.py` (binary `.uasset` header/class/foreign-root & `.cfg*` folder scan),
-  `scripts/uasset_summary.py` (staged `uasset-dump` digest for Material Instances, Curves and Materials), `scripts/sdk_validate_mod.py`
-  (pre-cook `.uplugin`, `Content/` hygiene and cross-mod reference validator), and the opt-in loopback `scripts/editor_bridge.py`
-  + `sdk_run.py --bridge*` workflow (`references/live-bridge.md`).
+  `scripts/uasset_summary.py` (staged `uasset-dump` digest for Material Instances, Curves and Materials) and `scripts/sdk_validate_mod.py`
+  (pre-cook `.uplugin`, `Content/` hygiene and cross-mod reference validator).
 - stalker2-curves: `scripts/decode_curves.py` adds `--check` (flags cubic keys with non-zero tangents) and `--diff <vanilla> <mod>`.
 - stalker2-mod-setup: added `scripts/mod_guardrail.py` and `init_mod_repo.py --with-hook` for opt-in secret/path/`Content/` pre-commit checks.
 
