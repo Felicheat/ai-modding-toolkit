@@ -34,6 +34,9 @@ GROUPS = [
 PRESETS = {
     'core': ['stalker2-workflow', 'stalker2-mod-setup', 'stalker2-updates', 'stalker2-paks', 'stalker2-cfg', 'stalker2-gamedata',
              'stalker2-testing', 'stalker2-crashes', 'stalker2-release', 'stalker2-vortex'],
+    'zonekit': ['stalker2-workflow', 'stalker2-mod-setup', 'stalker2-updates', 'stalker2-paks', 'stalker2-cfg',
+                'stalker2-curves', 'stalker2-zonekit', 'stalker2-blueprints', 'stalker2-testing', 'stalker2-crashes',
+                'stalker2-release', 'stalker2-vortex'],
 }
 
 # ---------------- generic scan ----------------
@@ -518,6 +521,28 @@ def test():
              '--yes', '--dry-run'])
         if os.path.exists(os.path.join(home, 'proj')):
             print('FAIL dry run wrote files')
+            fails += 1
+        ex_dir = os.path.join(home, 'excl_proj')
+        run(['--install', 'all', '--exclude', 'stalker2-linux,stalker2-saves', '--agent', 'agents',
+             '--scope', 'project', '--project-dir', ex_dir, '--yes'])
+        ex_skills = os.path.join(ex_dir, '.agents', 'skills')
+        if os.path.exists(os.path.join(ex_skills, 'stalker2-linux')) or os.path.exists(os.path.join(ex_skills, 'stalker2-saves')):
+            print('FAIL --exclude kept excluded skill(s)')
+            fails += 1
+        if len(os.listdir(ex_skills)) != len(names) - 2:
+            print('FAIL --exclude count mismatch: got %d' % len(os.listdir(ex_skills)))
+            fails += 1
+        zk_dir = os.path.join(home, 'zk_proj')
+        run(['--install', 'zonekit', '--agent', 'claude-code', '--scope', 'project', '--project-dir', zk_dir, '--yes'])
+        zk_got = set(os.listdir(os.path.join(zk_dir, '.claude', 'skills')))
+        if zk_got != set(PRESETS['zonekit']):
+            print('FAIL zonekit preset mismatch: %s' % sorted(zk_got))
+            fails += 1
+        src_list = subprocess.run([sys.executable, '-I', os.path.join(SRC, 'install.py'), '--list', '--json', '--home', home],
+                                  capture_output=True, text=True)
+        src_cat = json.loads(src_list.stdout)
+        if 'core' not in src_cat.get('presets', {}) or 'zonekit' not in src_cat.get('presets', {}) or not src_cat['skills'][0].get('tokens'):
+            print('FAIL source install.py fallback missing presets/tokens')
             fails += 1
         for zn in os.listdir(os.path.join(stage, 'claude-ai')):
             with zipfile.ZipFile(os.path.join(stage, 'claude-ai', zn)) as z:

@@ -11,8 +11,8 @@ Interactive (a menu with descriptions):
 For AI agents and scripts:
   python install.py --list [--json]                       skills, groups, token cost, and the agents found here
   python install.py --describe stalker2-paks              one skill's full description
-  python install.py --install all|core|<names or numbers> --agent <ids> [--scope user|project --project-dir DIR]
-                    [--dry-run] [--yes] [--replace-foreign]
+  python install.py --install all|core|zonekit|<names or numbers> [--exclude <names or numbers>]
+                    --agent <ids> [--scope user|project --project-dir DIR] [--dry-run] [--yes] [--replace-foreign]
   python install.py --uninstall all|<names> --agent <ids> [--scope ...] [--yes]
   python install.py --verify --agent <ids> [--scope ...]  check installed files against their recorded hashes
   python install.py --agents-md FILE --agent <id> [--remove]   add / remove a skill index block in an AGENTS.md
@@ -56,6 +56,24 @@ def say(msg=''):
 
 # ---------------- catalog ----------------
 
+DEFAULT_GROUPS = [
+    ('start', 'Start here', ['stalker2-workflow', 'stalker2-mod-setup', 'stalker2-updates', 'stalker2-linux']),
+    ('data', 'Game files and data', ['stalker2-paks', 'stalker2-cfg', 'stalker2-gamedata', 'stalker2-curves',
+                                     'stalker2-localization', 'stalker2-saves']),
+    ('test', 'Testing and fixing', ['stalker2-testing', 'stalker2-crashes']),
+    ('kit', 'Zone Kit and assets', ['stalker2-zonekit', 'stalker2-blueprints', 'stalker2-animation', 'stalker2-audio',
+                                    'stalker2-voiceover']),
+    ('ship', 'Shipping mods', ['stalker2-release', 'stalker2-vortex', 'stalker2-publish']),
+]
+DEFAULT_PRESETS = {
+    'core': ['stalker2-workflow', 'stalker2-mod-setup', 'stalker2-updates', 'stalker2-paks', 'stalker2-cfg', 'stalker2-gamedata',
+             'stalker2-testing', 'stalker2-crashes', 'stalker2-release', 'stalker2-vortex'],
+    'zonekit': ['stalker2-workflow', 'stalker2-mod-setup', 'stalker2-updates', 'stalker2-paks', 'stalker2-cfg',
+                'stalker2-curves', 'stalker2-zonekit', 'stalker2-blueprints', 'stalker2-testing', 'stalker2-crashes',
+                'stalker2-release', 'stalker2-vortex'],
+}
+
+
 def _read_frontmatter(path):
     text = open(path, encoding='utf-8').read()
     out = {}
@@ -68,23 +86,51 @@ def _read_frontmatter(path):
     return out
 
 
+def _estimate_tokens(skill_dir, desc):
+    sk = os.path.join(skill_dir, 'SKILL.md')
+    text = open(sk, encoding='utf-8').read()
+    end = text.find('\n---', 3) if text.startswith('---') else -1
+    body = text[end + 4:].lstrip('\r\n') if end >= 0 else text
+    ref_dir = os.path.join(skill_dir, 'references')
+    ref_bytes = 0
+    if os.path.isdir(ref_dir):
+        for fn in os.listdir(ref_dir):
+            fp = os.path.join(ref_dir, fn)
+            if os.path.isfile(fp):
+                ref_bytes += os.path.getsize(fp)
+    return {
+        'listing': (len(desc) + len(os.path.basename(skill_dir)) + 80 + 3) // 4,
+        'body': (len(body) + 3) // 4,
+        'references': (ref_bytes + 3) // 4,
+    }
+
+
 def load_catalog():
     p = os.path.join(PACK_DIR, 'catalog.json')
     if os.path.isfile(p):
         with open(p, encoding='utf-8') as f:
             return json.load(f)
     # fallback when run from an unbuilt source folder: read the skills directly
+    group_of = {n: gid for gid, _, ns in DEFAULT_GROUPS for n in ns}
     skills = []
     for n in sorted(os.listdir(SKILLS_DIR)):
-        sk = os.path.join(SKILLS_DIR, n, 'SKILL.md')
+        sdir = os.path.join(SKILLS_DIR, n)
+        sk = os.path.join(sdir, 'SKILL.md')
         if os.path.isfile(sk):
             fm = _read_frontmatter(sk)
-            skills.append({'name': n, 'group': 'all', 'description': fm.get('description', ''),
-                           'requires': fm.get('compatibility', ''), 'tokens': {}, 'files': []})
+            desc = fm.get('description', '')
+            skills.append({'name': n, 'group': group_of.get(n, 'other'), 'description': desc,
+                           'requires': fm.get('compatibility', ''), 'tokens': _estimate_tokens(sdir, desc), 'files': []})
+    present = {s['name'] for s in skills}
+    groups = [{'id': gid, 'title': title, 'skills': [n for n in ns if n in present]}
+              for gid, title, ns in DEFAULT_GROUPS]
+    extras = [s['name'] for s in skills if s['name'] not in group_of]
+    if extras:
+        groups.append({'id': 'other', 'title': 'Other', 'skills': extras})
     version = open(os.path.join(PACK_DIR, 'VERSION'), encoding='utf-8').read().strip() \
         if os.path.isfile(os.path.join(PACK_DIR, 'VERSION')) else '?'
     return {'pack': 'STALKER 2 AI Modding Toolkit', 'id': 'STALKER2-AI-Modding-Toolkit', 'version': version,
-            'groups': [{'id': 'all', 'title': 'Skills', 'skills': [s['name'] for s in skills]}], 'presets': {}, 'skills': skills}
+            'groups': [g for g in groups if g['skills']], 'presets': DEFAULT_PRESETS, 'skills': skills}
 
 
 def ordered_skills(cat):
@@ -427,9 +473,10 @@ def print_list(cat, home, as_json):
             i += 1
             s = by[n]
             say('  %2d  %-22s %5s  %s' % (i, n, tok(s), short(s['description'])))
-    if cat.get('presets', {}).get('core'):
-        say('\n  core = %s' % ', '.join(cat['presets']['core']))
+    for pname, pskills in (cat.get('presets') or {}).items():
+        say('\n  %-7s = %s' % (pname, ', '.join(pskills)))
     say('\n  Token column: the cost when the agent opens that skill. Until then each skill costs ~100 tokens.')
+    say('  Tip: pass --exclude <names or numbers> with --install to skip skills you do not need.')
     say('\nAgents')
     for j, a in enumerate(AGENTS, 1):
         say('  %d  %-12s %-6s %s' % (j, a[0], 'found' if a[0] in found else '', a[1]))
@@ -518,7 +565,7 @@ def interactive(cat, home):
 def parse_args(argv):
     args, i = {}, 0
     flags = {'--json', '--dry-run', '--yes', '--replace-foreign', '--remove', '--claude-ai', '--list', '--verify', '--version', '-h', '--help'}
-    valued = {'--install', '--uninstall', '--agent', '--scope', '--project-dir', '--describe', '--agents-md', '--home'}
+    valued = {'--install', '--exclude', '--uninstall', '--agent', '--scope', '--project-dir', '--describe', '--agents-md', '--home'}
     while i < len(argv):
         a = argv[i]
         if a in flags:
@@ -567,10 +614,17 @@ def main(argv):
         if args.get('agents_md'):
             aid = resolve_agents(args.get('agent', 'agents'), [])[0]
             return agents_md(cat, args['agents_md'], aid, home, args, remove=bool(args.get('remove')))
+        if args.get('exclude') and 'install' not in args:
+            raise ValueError('--exclude only applies to --install')
         for mode in ('install', 'uninstall', 'verify'):
             if mode in args:
                 sel = args.get(mode) if mode != 'verify' else 'all'
                 names = resolve_selection(cat, sel)
+                if mode == 'install' and args.get('exclude'):
+                    excluded = set(resolve_selection(cat, args['exclude']))
+                    names = [n for n in names if n not in excluded]
+                    if not names:
+                        raise ValueError('no skills left after --exclude')
                 agent_ids = resolve_agents(args.get('agent', ''), detect_agents(home))
                 if mode != 'verify' and not args.get('yes') and not args.get('dry_run'):
                     run_actions(cat, names, agent_ids, dict(args, dry_run=True), home, mode)
