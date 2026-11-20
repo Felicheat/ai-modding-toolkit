@@ -8,8 +8,9 @@ usage: python niagara_constants.py <system or emitter .uasset> [filter substring
 
 One line per value: `Constants.<Emitter>.<Module>.<Input> [type] = value`, grouped by script. A constant appears once
 per script that uses it (spawn, update, GPU compute). Limits: uncooked assets with file version UE5 1008 or newer
-(both pre-2.0 1008 kits and 2.0/2.1 1012+ kits); it shows constants only, not what an input is linked to, not dynamic
-inputs and not expression text (copy those from the editor, see references/niagara.md).
+(tested on 1008 pre-2.0 assets and 1013 2.0/2.1 assets; 1009..1011 share the pre-1012 legacy tag layout in code and are
+untested on real assets); it shows constants only, not what an input is linked to, not dynamic inputs and not expression
+text (copy those from the editor, see references/niagara.md).
 """
 import struct
 import sys

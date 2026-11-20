@@ -21,20 +21,9 @@ ZIP_DATE = (2026, 11, 15, 0, 0, 0)
 TEXT_EXT = {'.md', '.py', '.mjs', '.js', '.json', '.txt', '.cs', '.csproj', '.bat', '.cmd', '.ps1', '.yaml', '.yml', '.ini'}
 SKIP_DIRS = {'__pycache__', '.git', 'bin', 'obj', 'node_modules', '.vs', '.idea'}
 
-# Groups shown by the installer, in order. Every skill must be in exactly one group.
-GROUPS = [
-    ('start', 'Start here', ['stalker2-workflow', 'stalker2-mod-setup', 'stalker2-updates', 'stalker2-linux']),
-    ('data', 'Game files and data', ['stalker2-paks', 'stalker2-cfg', 'stalker2-gamedata', 'stalker2-curves',
-                                     'stalker2-localization', 'stalker2-saves']),
-    ('test', 'Testing and fixing', ['stalker2-testing', 'stalker2-crashes']),
-    ('kit', 'Zone Kit and assets', ['stalker2-zonekit', 'stalker2-blueprints', 'stalker2-animation', 'stalker2-audio',
-                                    'stalker2-voiceover']),
-    ('ship', 'Shipping mods', ['stalker2-release', 'stalker2-vortex', 'stalker2-publish']),
-]
-PRESETS = {
-    'core': ['stalker2-workflow', 'stalker2-mod-setup', 'stalker2-updates', 'stalker2-paks', 'stalker2-cfg', 'stalker2-gamedata',
-             'stalker2-testing', 'stalker2-crashes', 'stalker2-release', 'stalker2-vortex'],
-}
+if SRC not in sys.path:
+    sys.path.insert(0, SRC)
+from install import DEFAULT_GROUPS as GROUPS, DEFAULT_PRESETS as PRESETS
 
 # ---------------- generic scan ----------------
 ALLOWED_PHRASES = []
@@ -518,6 +507,40 @@ def test():
              '--yes', '--dry-run'])
         if os.path.exists(os.path.join(home, 'proj')):
             print('FAIL dry run wrote files')
+            fails += 1
+        ex_dir = os.path.join(home, 'excl_proj')
+        run(['--install', 'all', '--exclude', 'stalker2-linux,stalker2-saves', '--agent', 'agents',
+             '--scope', 'project', '--project-dir', ex_dir, '--yes'])
+        ex_skills = os.path.join(ex_dir, '.agents', 'skills')
+        if os.path.exists(os.path.join(ex_skills, 'stalker2-linux')) or os.path.exists(os.path.join(ex_skills, 'stalker2-saves')):
+            print('FAIL --exclude kept excluded skill(s)')
+            fails += 1
+        if len(os.listdir(ex_skills)) != len(names) - 2:
+            print('FAIL --exclude count mismatch: got %d' % len(os.listdir(ex_skills)))
+            fails += 1
+        zk_dir = os.path.join(home, 'zk_proj')
+        run(['--install', 'zonekit', '--agent', 'claude-code', '--scope', 'project', '--project-dir', zk_dir, '--yes'])
+        zk_got = set(os.listdir(os.path.join(zk_dir, '.claude', 'skills')))
+        if zk_got != set(PRESETS['zonekit']):
+            print('FAIL zonekit preset mismatch: %s' % sorted(zk_got))
+            fails += 1
+        src_list = subprocess.run([sys.executable, '-I', os.path.join(SRC, 'install.py'), '--list', '--json', '--home', home],
+                                  capture_output=True, text=True)
+        built_list = subprocess.run([sys.executable, '-I', os.path.join(stage, 'install.py'), '--list', '--json', '--home', home],
+                                    capture_output=True, text=True)
+        src_cat = json.loads(src_list.stdout)
+        stage_cat = json.loads(built_list.stdout)
+        src_meta = [(s['name'], s.get('group'), s.get('tokens')) for s in src_cat['skills']]
+        stage_meta = [(s['name'], s.get('group'), s.get('tokens')) for s in stage_cat['skills']]
+        if src_cat.get('presets') != stage_cat.get('presets') or src_meta != stage_meta:
+            print('FAIL source install.py --list --json differs from built release catalog')
+            fails += 1
+        ign = subprocess.run([sys.executable, '-I', os.path.join(SRC, 'install.py'), '--install', 'core',
+                              '--exclude', 'stalker2-audio', '--agent', 'claude-code', '--scope', 'project',
+                              '--project-dir', os.path.join(home, 'ign_proj'), '--yes', '--dry-run', '--home', home],
+                             capture_output=True, text=True)
+        if ign.returncode != 0 or 'not in selection' not in ign.stdout:
+            print('FAIL --exclude ignored-skill note check (exit %d): %r' % (ign.returncode, ign.stdout))
             fails += 1
         for zn in os.listdir(os.path.join(stage, 'claude-ai')):
             with zipfile.ZipFile(os.path.join(stage, 'claude-ai', zn)) as z:
