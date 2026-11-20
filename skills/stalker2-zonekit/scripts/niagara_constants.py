@@ -61,7 +61,16 @@ class Package:
         self.imports = []
         for i in range(imp_count):
             self.imports.append(self.fname(raw, imp_off + i * 40 + 20))
-        exp_stride = (depends_off - exp_off) // exp_count if (exp_count and depends_off > exp_off) else (112 if ue5 >= 1012 else 96)
+        default_stride = 112 if ue5 >= 1012 else 96
+        if depends_off > exp_off:
+            span = depends_off - exp_off
+            if span % exp_count == 0 and (span // exp_count) in (96, 112):
+                exp_stride = span // exp_count
+            else:
+                raise SystemExit('implausible export stride (span %d, count %d, ue5 %d): header layout differs'
+                                 % (span, exp_count, ue5))
+        else:
+            exp_stride = default_stride
         self.exports = []
         for i in range(exp_count):
             e = exp_off + i * exp_stride

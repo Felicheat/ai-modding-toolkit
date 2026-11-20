@@ -175,7 +175,7 @@ def install_dir(folder):
 
 
 def pack_cfg(mod, base, priority, out_dir):
-    """Pack any .cfg or .cfg_patch* files under Content/ into a companion _Cfg[_<N>]_P.pak via repak."""
+    """Pack any .cfg or .cfg_patch* files under Content/ into a companion _Cfg[_<N>_P].pak via repak."""
     content = os.path.join(kit_paths()['kit'], 'Stalker2', 'Mods', mod, 'Content')
     if not os.path.isdir(content):
         return None
@@ -188,7 +188,7 @@ def pack_cfg(mod, base, priority, out_dir):
     if not cfgs:
         return None
     repak = s2paths.tool('repak')
-    pak_name = '%s_Cfg_%s_P.pak' % (base, priority) if priority else '%s_Cfg_P.pak' % base
+    pak_name = '%s_Cfg_%s_P.pak' % (base, priority) if priority else '%s_Cfg.pak' % base
     out_pak = os.path.join(out_dir, pak_name)
     work = os.path.join(s2paths.work_dir(), 'cfg_' + mod)
     shutil.rmtree(work, ignore_errors=True)

@@ -128,14 +128,20 @@ def _detect_game():
 
 
 def _detect_kit():
-    cur = os.path.abspath(_HERE)
-    while True:
-        if os.path.isfile(os.path.join(cur, 'Stalker2', 'Stalker2.uproject')):
-            return cur
-        parent = os.path.dirname(cur)
-        if parent == cur:
-            break
-        cur = parent
+    seen = set()
+    for start in (os.path.abspath(_HERE), os.getcwd()):
+        cur = os.path.abspath(start)
+        while True:
+            key = os.path.normcase(cur)
+            if key in seen:
+                break
+            seen.add(key)
+            if os.path.isfile(os.path.join(cur, 'Stalker2', 'Stalker2.uproject')):
+                return cur
+            parent = os.path.dirname(cur)
+            if parent == cur:
+                break
+            cur = parent
     base = os.environ.get('PROGRAMDATA') or os.environ.get('ALLUSERSPROFILE')
     if not base:
         return None

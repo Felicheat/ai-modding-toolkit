@@ -162,6 +162,7 @@ def main():
     for k in roots + advanced:
         seen_pins = set()
         for pin, v in L[k]:
+            # CustomizedUVs is a fixed array on MaterialEditorOnlyData; the +49 byte scan misreads its slots as false links.
             if pin in seen_pins or (k in roots and pin == 'CustomizedUVs'):
                 continue
             seen_pins.add(pin)
