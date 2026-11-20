@@ -13,6 +13,7 @@ For AI agents and scripts:
   python install.py --describe stalker2-paks              one skill's full description
   python install.py --install all|core|zonekit|<names or numbers> [--exclude <names or numbers>]
                     --agent <ids> [--scope user|project --project-dir DIR] [--dry-run] [--yes] [--replace-foreign]
+                    (--exclude numbers refer to the full --list numbering, not positions within a preset)
   python install.py --uninstall all|<names> --agent <ids> [--scope ...] [--yes]
   python install.py --verify --agent <ids> [--scope ...]  check installed files against their recorded hashes
   python install.py --agents-md FILE --agent <id> [--remove]   add / remove a skill index block in an AGENTS.md
@@ -74,6 +75,16 @@ DEFAULT_PRESETS = {
 }
 
 
+def _unquote(v):
+    if len(v) >= 2 and v[0] == v[-1] and v[0] in '"\'':
+        return v[1:-1]
+    return v
+
+
+def _tok(chars):
+    return int(round(chars / 4.0))
+
+
 def _read_frontmatter(path):
     text = open(path, encoding='utf-8').read()
     out = {}
@@ -82,26 +93,26 @@ def _read_frontmatter(path):
         for line in text[3:end].splitlines():
             if line and not line.startswith(' ') and ':' in line:
                 k, v = line.split(':', 1)
-                out[k.strip()] = v.strip().strip('"\'')
+                out[k.strip()] = _unquote(v.strip())
     return out
 
 
-def _estimate_tokens(skill_dir, desc):
+def _estimate_tokens(skill_dir, fm):
     sk = os.path.join(skill_dir, 'SKILL.md')
     text = open(sk, encoding='utf-8').read()
     end = text.find('\n---', 3) if text.startswith('---') else -1
-    body = text[end + 4:].lstrip('\r\n') if end >= 0 else text
+    body = text[end + 4:].lstrip('\n') if end >= 0 else text
     ref_dir = os.path.join(skill_dir, 'references')
-    ref_bytes = 0
+    ref_chars = 0
     if os.path.isdir(ref_dir):
         for fn in os.listdir(ref_dir):
             fp = os.path.join(ref_dir, fn)
             if os.path.isfile(fp):
-                ref_bytes += os.path.getsize(fp)
+                ref_chars += len(open(fp, encoding='utf-8').read())
     return {
-        'listing': (len(desc) + len(os.path.basename(skill_dir)) + 80 + 3) // 4,
-        'body': (len(body) + 3) // 4,
-        'references': (ref_bytes + 3) // 4,
+        'listing': _tok(len(fm.get('name', '')) + len(fm.get('description', ''))),
+        'body': _tok(len(body)),
+        'references': _tok(ref_chars),
     }
 
 
@@ -120,7 +131,7 @@ def load_catalog():
             fm = _read_frontmatter(sk)
             desc = fm.get('description', '')
             skills.append({'name': n, 'group': group_of.get(n, 'other'), 'description': desc,
-                           'requires': fm.get('compatibility', ''), 'tokens': _estimate_tokens(sdir, desc), 'files': []})
+                           'requires': fm.get('compatibility', ''), 'tokens': _estimate_tokens(sdir, fm), 'files': []})
     present = {s['name'] for s in skills}
     groups = [{'id': gid, 'title': title, 'skills': [n for n in ns if n in present]}
               for gid, title, ns in DEFAULT_GROUPS]
@@ -622,6 +633,9 @@ def main(argv):
                 names = resolve_selection(cat, sel)
                 if mode == 'install' and args.get('exclude'):
                     excluded = set(resolve_selection(cat, args['exclude']))
+                    ignored = sorted(excluded - set(names))
+                    if ignored and not args.get('json'):
+                        say('note: --exclude ignored skill(s) not in selection: ' + ', '.join(ignored))
                     names = [n for n in names if n not in excluded]
                     if not names:
                         raise ValueError('no skills left after --exclude')
