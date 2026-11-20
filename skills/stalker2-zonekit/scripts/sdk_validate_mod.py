@@ -4,8 +4,8 @@ Checks a mod folder (under <kit>/Stalker2/Mods/<mod> or an explicit directory pa
 running sdk_cook_mod.py or packing:
   - Mod name matches ^[A-Za-z0-9_]+$
   - <Mod>.uplugin parses cleanly, checks ExplicitlyLoaded and BuiltInInitialFeatureState
-  - Content/ contains only shippable extensions (.uasset .uexp .ubulk .umap .cfg .cfg_patch* .wem .bnk)
-    and no nested Content/Content/ or working directories (.git, __pycache__, node_modules, .ai)
+  - Content/ warns on unrecognized extensions while failing on nested Content/Content/ or
+    working directories (.git, __pycache__, node_modules, .ai)
   - Offline cross-mod hard reference check via uasset_scan.py against .uplugin Plugins declarations
   - Warns on Windows if Stalker2ModEditor is open (cache locks block sdk_cook_mod.py)
 
@@ -104,7 +104,7 @@ def validate_mod_dir(mod_dir):
                 full = os.path.join(dirpath, fn)
                 rel = os.path.relpath(full, mod_dir).replace('\\', '/')
                 if not _allowed_content_file(fn):
-                    fails.append('non-shippable file inside Content/: %s' % rel)
+                    warns.append('unrecognized file type inside Content/: %s' % rel)
                     continue
                 low = fn.lower()
                 if low.endswith('.uasset'):

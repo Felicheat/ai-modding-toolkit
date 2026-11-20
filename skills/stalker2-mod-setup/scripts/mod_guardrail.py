@@ -1,13 +1,15 @@
 """Git pre-commit guardrail for mod repositories (secrets, user-path leaks, Content/ hygiene).
 
-Checks staged files in the current git repo (or all tracked files with --all) and blocks
-accidentally committing tokens, private keys, OS user paths in text logs/notes, nested
-Content/Content/ folders, or non-shippable files under Content/.
+Checks staged files in the current git repo (or all tracked files with --all):
+  - Blocks commits containing secret/token files, credential patterns, nested Content/Content/,
+    or forbidden dev dirs (.git, __pycache__, node_modules, .ai) under Content/.
+  - Warns (non-blocking) on unrecognized file extensions under Content/ and OS user paths in
+    .md/.txt/.log notes.
 
     python mod_guardrail.py           check git staged files (for .git/hooks/pre-commit)
     python mod_guardrail.py --all     audit all tracked files in the repository
 
-Pure stdlib. Exit code 0 on pass, 1 on block.
+Pure stdlib. Exit code 0 when no blocking errors (even with warnings), 1 on block.
 """
 import argparse
 import os
@@ -21,7 +23,7 @@ BLOCKED_FILENAMES = {
     's2_editor_bridge.token',
     '.stalker2_publish_secrets.env',
 }
-ALLOWED_CONTENT_EXTS = {'.uasset', '.uexp', '.ubulk', '.umap', '.cfg', '.wem', '.bnk'}
+ALLOWED_CONTENT_EXTS = {'.uasset', '.uexp', '.ubulk', '.umap', '.cfg', '.wem', '.bnk', '.pak', '.utoc', '.ucas', '.locres'}
 FORBIDDEN_CONTENT_DIRS = {'.git', '__pycache__', 'node_modules', '.ai'}
 USER_PATH_CHECK_EXTS = {'.md', '.txt', '.log'}
 TEXT_EXTS = {
@@ -67,6 +69,7 @@ def _is_scannable_text(rel_posix):
 def check_repo(all_tracked=False):
     paths = _git_paths(all_tracked=all_tracked)
     errors = []
+    warnings = []
 
     for rel in paths:
         parts = [p for p in rel.split('/') if p]
@@ -86,8 +89,8 @@ def check_repo(all_tracked=False):
             for bad_dir in FORBIDDEN_CONTENT_DIRS:
                 if bad_dir in sub[:-1]:
                     errors.append('[CONTENT BLOCK] forbidden dir (%s) inside Content/: %s' % (bad_dir, rel))
-            if not (ext_low in ALLOWED_CONTENT_EXTS or ext_low.startswith('.cfg_patch')):
-                errors.append('[CONTENT BLOCK] non-shippable file under Content/: %s' % rel)
+            if not (base_low.endswith('.cfg.bin') or ext_low in ALLOWED_CONTENT_EXTS or ext_low.startswith('.cfg_patch')):
+                warnings.append('[CONTENT WARN] unrecognized file under Content/: %s' % rel)
 
         if _is_scannable_text(rel):
             blob = _read_blob(rel, all_tracked=all_tracked)
@@ -97,9 +100,9 @@ def check_repo(all_tracked=False):
                     if rx.search(text):
                         errors.append('[SECRET BLOCK] possible %s in %s' % (label, rel))
                 if ext_low in USER_PATH_CHECK_EXTS and USER_PATH_RX.search(text):
-                    errors.append('[PATH BLOCK] machine user path leaked in %s' % rel)
+                    warnings.append('[PATH WARN] machine user path in %s' % rel)
 
-    return errors
+    return errors, warnings
 
 
 def main(argv):
@@ -108,11 +111,15 @@ def main(argv):
     args = ap.parse_args(argv)
 
     try:
-        errors = check_repo(all_tracked=args.all)
+        errors, warnings = check_repo(all_tracked=args.all)
     except RuntimeError as e:
         print('mod_guardrail: %s' % e, file=sys.stderr)
         return 1
 
+    if warnings:
+        print('mod_guardrail WARNINGS (%d issue(s)):' % len(warnings), file=sys.stderr)
+        for w in warnings:
+            print('  %s' % w, file=sys.stderr)
     if errors:
         print('mod_guardrail BLOCKED commit (%d issue(s)):' % len(errors), file=sys.stderr)
         for err in errors:

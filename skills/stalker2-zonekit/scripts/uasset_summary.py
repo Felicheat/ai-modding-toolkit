@@ -355,7 +355,13 @@ def format_text(summary):
         if cls == 'MaterialInstanceConstant':
             lines.append('  [%s] %s (Parent: %s)' % (cls, exp['name'], exp['parent']))
             if exp['scalars']:
-                lines.append('    Scalars : ' + ', '.join('%s=%.4g' % (s['name'], s['value']) for s in exp['scalars']))
+                lines.append('    Scalars : ' + ', '.join(
+                    '%s=%s' % (
+                        s['name'],
+                        ('%.4g' % s['value']) if isinstance(s['value'], (int, float)) and not isinstance(s['value'], bool) else 'None',
+                    )
+                    for s in exp['scalars']
+                ))
             if exp['vectors']:
                 lines.append('    Vectors : ' + ', '.join('%s=(%s)' % (v['name'], ','.join('%.3g' % x for x in v['value'])) for v in exp['vectors']))
             if exp['textures']:

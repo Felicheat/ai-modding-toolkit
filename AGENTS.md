@@ -12,12 +12,13 @@ pack during installation, and do not install tools or packages unless the user a
 1. Run `python install.py --list --json` from this folder (on Windows try `py -3` if `python` is missing). If no
    Python is available, use the manual route below.
 2. Show the user the skills in their groups: number, name, the first sentence of the description, and the token
-   cost. Mention the preset `core`. Offer `python install.py --describe <name>` for any skill they ask about.
-3. Ask which skills to install: `all`, `core`, or numbers / names.
+   cost. Mention the presets `core` and `zonekit` (and `--exclude` to drop unused skills). Offer `python install.py --describe <name>` for any skill they ask about.
+3. Ask which skills to install: `all`, `core`, `zonekit`, or numbers / names (optionally with `--exclude`; any numbers
+   passed to `--exclude` refer to the full `--list` numbering, not positions inside a preset).
 4. Ask which agents to install for. Suggest the ones with `found_on_this_pc: true`. Ask whether to install for every
    project (`--scope user`, the default) or one project (`--scope project --project-dir <folder>`).
 5. Run the install command with `--dry-run` and show the plan:
-   `python install.py --install <selection> --agent <ids> [--scope ...] --dry-run`
+   `python install.py --install <selection> [--exclude <skipped>] --agent <ids> [--scope ...] --dry-run`
    A `REFUSED` line means a skill with that name already exists and this pack did not install it (likely the
    user's own). Offer: skip it, install for one project instead, or `--replace-foreign` (backs it up first). Never
    use `--replace-foreign` without the user's explicit yes for it.

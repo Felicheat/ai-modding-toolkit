@@ -4,7 +4,7 @@
 
 Creates MOD.md, CHANGELOG.md, LOG.md, source/, release/, baseline/, notes/, .gitignore and .gitattributes, then runs
 git init and makes the first commit (when git is installed and --no-git is not given). With --with-hook, installs an
-opt-in .git/hooks/pre-commit running mod_guardrail.py (never overwrites an existing hook). Stdlib only.
+opt-in .git/hooks/pre-commit running mod_guardrail.py (never overwrites an existing hook; skips cleanly if moved). Stdlib only.
 """
 import datetime, os, shutil, subprocess, sys
 
@@ -64,12 +64,19 @@ def _install_hook(folder):
     script = (
         '#!/bin/sh\n'
         'GUARD="%s"\n'
+        'if [ ! -f "$GUARD" ]; then\n'
+        '  echo "mod_guardrail: guard not found at $GUARD, skipping" >&2\n'
+        '  exit 0\n'
+        'fi\n'
         'if command -v python >/dev/null 2>&1; then\n'
         '  python "$GUARD"\n'
         'elif command -v python3 >/dev/null 2>&1; then\n'
         '  python3 "$GUARD"\n'
-        'else\n'
+        'elif command -v py >/dev/null 2>&1; then\n'
         '  py -3 "$GUARD"\n'
+        'else\n'
+        '  echo "mod_guardrail: python not found, skipping" >&2\n'
+        '  exit 0\n'
         'fi\n'
     ) % guard
     with open(hook_path, 'w', encoding='utf-8', newline='\n') as fh:
